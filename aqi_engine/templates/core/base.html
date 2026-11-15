@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AQI Evaluator{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Top Navigation -->
+    <nav class="bg-slate-900 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-8">
+                <a href="{% url 'dashboard' %}" class="font-bold text-lg tracking-tight text-emerald-400">
+                    AQI Evaluator
+                </a>
+                <div class="hidden md:flex space-x-2 text-sm font-medium">
+                    <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-md hover:bg-slate-800">
+                        Public Dashboard
+                    </a>
+                    {% if user.is_authenticated %}
+                        {% if user.role == 'scientist' or user.role == 'admin' or user.is_superuser %}
+                            <a href="{% url 'scientist_workspace' %}" class="px-3 py-2 rounded-md hover:bg-slate-800">
+                                Scientist Workspace
+                            </a>
+                            <a href="{% url 'algorithm_visualizer' %}" class="px-3 py-2 rounded-md hover:bg-slate-800">
+                                Forecast Visualizer
+                            </a>
+                        {% endif %}
+                        {% if user.role == 'verifier' or user.role == 'admin' or user.is_superuser %}
+                            <a href="{% url 'verifier_queue' %}" class="px-3 py-2 rounded-md hover:bg-slate-800">
+                                Verifier Queue
+                            </a>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4 text-sm">
+                {% if user.is_authenticated %}
+                    <span class="text-slate-300">
+                        {{ user.username }}
+                        <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-700 text-emerald-300 uppercase">
+                            {{ user.role }}
+                        </span>
+                    </span>
+                    <form method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs">
+                            Logout
+                        </button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded font-medium">
+                        Staff Login
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    {% if messages %}
+        <div class="max-w-7xl mx-auto w-full px-4 pt-4">
+            {% for message in messages %}
+                <div class="p-3 mb-2 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-900 text-sm">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>
+

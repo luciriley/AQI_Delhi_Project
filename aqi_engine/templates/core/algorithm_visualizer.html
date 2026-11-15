@@ -1,0 +1,278 @@
+{% extends "core/base.html" %}
+{% block title %}Weather-Driven AQI Forecast Visualizer{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
+    <div>
+        <h1 class="text-2xl font-bold text-slate-900">Weather-to-AQI Forecast Visualizer</h1>
+        <p class="text-sm text-slate-500">
+            Evaluating meteorological forecasting models (<code class="text-xs bg-slate-200 px-1 rounded">temp_c</code>,
+            <code class="text-xs bg-slate-200 px-1 rounded">humidity</code>,
+            <code class="text-xs bg-slate-200 px-1 rounded">pressure_mb</code>,
+            <code class="text-xs bg-slate-200 px-1 rounded">windspeed_kph</code>)
+        </p>
+    </div>
+
+    <form method="get" class="flex flex-wrap items-center gap-3">
+        <div>
+            <label class="block text-[11px] font-semibold uppercase text-slate-500">Station</label>
+            <select name="location" onchange="this.form.submit()"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm">
+                {% for loc in locations %}
+                    <option value="{{ loc }}" {% if loc == selected_location %}selected{% endif %}>{{ loc }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-[11px] font-semibold uppercase text-slate-500">Forecast Model</label>
+            <select name="algorithm_id" onchange="this.form.submit()"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm">
+                {% for algo in algorithms %}
+                    <option value="{{ algo.algorithm_id }}"
+                        {% if selected_algo and algo.algorithm_id == selected_algo.algorithm_id %}selected{% endif %}>
+                        {{ algo.algorithm_name }} ({{ algo.version }})
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+</div>
+
+{% if selected_algo %}
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+    <div class="lg:col-span-2 bg-slate-900 text-slate-100 rounded-xl p-4 flex flex-col justify-center">
+        <span class="text-xs uppercase tracking-wider text-emerald-400 font-semibold">
+            Model Specification ({{ selected_algo.version }})
+        </span>
+        <p class="font-mono text-sm mt-1 text-slate-200 break-all">{{ selected_algo.formula_spec }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-center">
+        <span class="text-xs uppercase font-semibold text-slate-400">Backtest RMSE</span>
+        <span class="text-2xl font-extrabold text-slate-900 mt-1">{{ rmse|default:"N/A" }}</span>
+        <span class="text-xs text-slate-500">Root Mean Squared Error</span>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-center">
+        <span class="text-xs uppercase font-semibold text-slate-400">Backtest MAE</span>
+        <span class="text-2xl font-extrabold text-slate-900 mt-1">{{ mae|default:"N/A" }}</span>
+        <span class="text-xs text-slate-500">Mean Absolute Error</span>
+    </div>
+</div>
+{% endif %}
+
+{% if formula_error %}
+<div class="p-3 mb-6 rounded-md bg-amber-100 border border-amber-300 text-amber-900 text-sm">
+    <strong>Formula Preview Notice:</strong> Could not auto-evaluate formula locally ({{ formula_error }}).
+    Supported variables: <code>temp_c</code>, <code>humidity</code>, <code>pressure_mb</code>, <code>windspeed_kph</code>.
+</div>
+{% endif %}
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-semibold text-slate-800">Observed AQI & 12-Hour Future Forecast ({{ selected_location|default:"All Stations" }})</h2>
+            <p class="text-xs text-slate-500">Solid line shows historical observations; dashed line shows projected future AQI</p>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+            +12h Horizon
+        </span>
+    </div>
+    <div class="h-80">
+        <canvas id="forecastHorizonChart"></canvas>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
+        <div>
+            <h2 class="font-semibold text-slate-800 mb-1">Weather Sensitivity Simulator</h2>
+            <p class="text-xs text-slate-500 mb-4">Adjust meteorological inputs to test predicted AQI</p>
+
+            <div class="space-y-4 text-sm">
+                <div>
+                    <div class="flex justify-between text-xs font-medium mb-1">
+                        <span>Temperature (<code>temp_c</code>)</span>
+                        <span id="val-temp" class="font-bold text-slate-900">28.0 °C</span>
+                    </div>
+                    <input type="range" id="sim-temp" min="-5" max="48" step="0.5" value="28" class="w-full accent-emerald-600">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs font-medium mb-1">
+                        <span>Humidity (<code>humidity</code>)</span>
+                        <span id="val-humidity" class="font-bold text-slate-900">60 %</span>
+                    </div>
+                    <input type="range" id="sim-humidity" min="10" max="100" step="1" value="60" class="w-full accent-emerald-600">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs font-medium mb-1">
+                        <span>Wind Speed (<code>windspeed_kph</code>)</span>
+                        <span id="val-wind" class="font-bold text-slate-900">8.5 kph</span>
+                    </div>
+                    <input type="range" id="sim-wind" min="0" max="50" step="0.5" value="8.5" class="w-full accent-emerald-600">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs font-medium mb-1">
+                        <span>Pressure (<code>pressure_mb</code>)</span>
+                        <span id="val-pressure" class="font-bold text-slate-900">1012 mb</span>
+                    </div>
+                    <input type="range" id="sim-pressure" min="980" max="1040" step="1" value="1012" class="w-full accent-emerald-600">
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 p-4 rounded-lg bg-slate-50 border border-slate-200 text-center">
+            <span class="text-xs uppercase font-semibold text-slate-400">Simulated Forecast AQI</span>
+            <div id="sim-output" class="text-3xl font-extrabold text-emerald-600 mt-1">--</div>
+        </div>
+    </div>
+
+    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <h2 class="font-semibold text-slate-800 mb-1">Historical Backtest: Actual vs. Weather-Predicted AQI</h2>
+        <p class="text-xs text-slate-500 mb-4">Evaluated across 60 samples from <code>v_pyspark_training_matrix</code></p>
+        <div class="h-72">
+            <canvas id="backtestChart"></canvas>
+        </div>
+    </div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <h3 class="font-semibold text-sm text-slate-800 mb-2">Wind Speed vs. AQI Dispersion</h3>
+        <div class="h-56"><canvas id="windScatter"></canvas></div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <h3 class="font-semibold text-sm text-slate-800 mb-2">Temperature vs. AQI</h3>
+        <div class="h-56"><canvas id="tempScatter"></canvas></div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <h3 class="font-semibold text-sm text-slate-800 mb-2">Humidity vs. AQI</h3>
+        <div class="h-56"><canvas id="humidityScatter"></canvas></div>
+    </div>
+</div>
+<script>
+    const payload = JSON.parse('{{ chart_payload_json|escapejs }}');
+    const dashPattern = new Array(2).fill(6);
+
+    new Chart(document.getElementById('forecastHorizonChart'), {
+        type: 'line',
+        data: {
+            labels: payload.forecast_labels,
+            datasets: [
+                {
+                    label: 'Observed AQI',
+                    data: payload.forecast_actual,
+                    borderColor: '#0f172a',
+                    backgroundColor: 'rgba(15, 23, 42, 0.1)',
+                    borderWidth: 2.5,
+                    tension: 0.3
+                },
+                {
+                    label: 'Predicted Future AQI',
+                    data: payload.forecast_projected,
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                    borderWidth: 2.5,
+                    borderDash: dashPattern,
+                    fill: true,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false }
+        }
+    });
+
+    new Chart(document.getElementById('backtestChart'), {
+        type: 'line',
+        data: {
+            labels: payload.backtest_labels,
+            datasets: [
+                {
+                    label: 'Benchmark AQI',
+                    data: payload.actual_series,
+                    borderColor: '#0f172a',
+                    borderWidth: 2,
+                    pointRadius: 2
+                },
+                {
+                    label: 'Model Prediction',
+                    data: payload.predicted_series,
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    pointRadius: 2
+                }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    function makeScatter(canvasId, points, xLabel, color) {
+        new Chart(document.getElementById(canvasId), {
+            type: 'scatter',
+            data: { datasets: [{ label: xLabel, data: points, backgroundColor: color }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { title: { display: true, text: xLabel } },
+                    y: { title: { display: true, text: 'AQI' } }
+                }
+            }
+        });
+    }
+
+    makeScatter('windScatter', payload.scatter_wind, 'Wind Speed (kph)', '#0ea5e9');
+    makeScatter('tempScatter', payload.scatter_temp, 'Temperature (°C)', '#f59e0b');
+    makeScatter('humidityScatter', payload.scatter_humidity, 'Humidity (%)', '#8b5cf6');
+
+    const formulaStr = "{{ selected_algo.formula_spec|default:''|escapejs }}";
+    const sliders = new Array('temp', 'humidity', 'wind', 'pressure');
+
+    function updateSimulator() {
+        const temp_c = parseFloat(document.getElementById('sim-temp').value);
+        const humidity = parseFloat(document.getElementById('sim-humidity').value);
+        const windspeed_kph = parseFloat(document.getElementById('sim-wind').value);
+        const pressure_mb = parseFloat(document.getElementById('sim-pressure').value);
+
+        document.getElementById('val-temp').textContent = temp_c.toFixed(1) + ' °C';
+        document.getElementById('val-humidity').textContent = humidity + ' %';
+        document.getElementById('val-wind').textContent = windspeed_kph.toFixed(1) + ' kph';
+        document.getElementById('val-pressure').textContent = pressure_mb + ' mb';
+
+        let result = null;
+        try {
+            if (formulaStr) {
+                const fn = new Function('temp_c', 'humidity', 'windspeed_kph', 'pressure_mb', 'return (' + formulaStr + ');');
+                result = fn(temp_c, humidity, windspeed_kph, pressure_mb);
+            }
+        } catch (e) {
+            result = null;
+        }
+
+        if (typeof result !== 'number' || isNaN(result)) {
+            result = Math.max(15, (temp_c * 2.1) + (humidity * 0.65) - (windspeed_kph * 2.4) + ((pressure_mb - 1000) * 1.2));
+        }
+
+        document.getElementById('sim-output').textContent = Math.round(result);
+    }
+
+    sliders.forEach(function(id) {
+        document.getElementById('sim-' + id).addEventListener('input', updateSimulator);
+    });
+    updateSimulator();
+</script>
+{% endblock %}
+

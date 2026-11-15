@@ -1,0 +1,95 @@
+{% extends "core/base.html" %}
+{% block title %}Verifier Validation Queue{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-slate-900">Verifier Validation Queue</h1>
+    <p class="text-sm text-slate-500">Review flagged sensor records from <code class="text-xs bg-slate-200 px-1 rounded">aqi_3nf</code></p>
+</div>
+
+<!-- Pending Queue -->
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+    <div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+        <h2 class="font-semibold text-slate-800">Pending Anomalies ({{ pending_items|length }})</h2>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+                <tr>
+                    <th class="px-4 py-3 text-left">Queue #</th>
+                    <th class="px-4 py-3 text-left">AQI ID</th>
+                    <th class="px-4 py-3 text-left">Flag Reason</th>
+                    <th class="px-4 py-3 text-left">Pollutants (PM2.5 / PM10 / CO / NO2)</th>
+                    <th class="px-4 py-3 text-left">Reported AQI</th>
+                    <th class="px-4 py-3 text-right">Resolution</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for item in pending_items %}
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-3 font-mono">#{{ item.queue_id }}</td>
+                    <td class="px-4 py-3 text-slate-600">{{ item.aqi_record.id }}</td>
+                    <td class="px-4 py-3 font-medium text-amber-800">{{ item.flag_reason }}</td>
+                    <td class="px-4 py-3 font-mono text-xs">
+                        {{ item.aqi_record.pm2_5 }} / {{ item.aqi_record.pm10 }} / {{ item.aqi_record.co }} / {{ item.aqi_record.no2 }}
+                    </td>
+                    <td class="px-4 py-3 font-bold">{{ item.aqi_record.aqi_index }}</td>
+                    <td class="px-4 py-3 text-right space-x-1">
+                        <form method="post" class="inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="queue_id" value="{{ item.queue_id }}">
+                            <button name="resolution_action" value="approved"
+                                    class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs">
+                                Approve
+                            </button>
+                            <button name="resolution_action" value="corrected"
+                                    class="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1 rounded text-xs">
+                                Correct
+                            </button>
+                            <button name="resolution_action" value="rejected"
+                                    class="bg-red-600 hover:bg-red-500 text-white px-2.5 py-1 rounded text-xs">
+                                Reject
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">All flagged records have been resolved.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recently Resolved -->
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-200">
+        <h2 class="font-semibold text-slate-800">Recently Resolved Items</h2>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+                <tr>
+                    <th class="px-4 py-3 text-left">Queue #</th>
+                    <th class="px-4 py-3 text-left">AQI ID</th>
+                    <th class="px-4 py-3 text-left">Flag Reason</th>
+                    <th class="px-4 py-3 text-left">Action Taken</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for item in resolved_items %}
+                <tr>
+                    <td class="px-4 py-3 font-mono">#{{ item.queue_id }}</td>
+                    <td class="px-4 py-3">{{ item.aqi_record.id }}</td>
+                    <td class="px-4 py-3 text-slate-600">{{ item.flag_reason }}</td>
+                    <td class="px-4 py-3 uppercase text-xs font-bold text-slate-700">{{ item.resolution_action }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="px-4 py-4 text-center text-slate-400">No resolved history yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+

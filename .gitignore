@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+db.sqlite3
+build_full_report.py
+build_odt.py
+users
+.~lock.*
+*.odt
+.env

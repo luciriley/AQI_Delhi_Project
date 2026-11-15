@@ -1,0 +1,227 @@
+{% extends "core/base.html" %}
+{% block title %}Public AQI Dashboard · Delhi Air Quality{% endblock %}
+
+{% block content %}
+<div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-6 mb-8 shadow-md">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mb-2">
+                LIVE TELEMETRY · NCT OF DELHI
+            </span>
+            <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Delhi Air Quality & Meteorological Command</h1>
+            <p class="text-sm text-slate-300 mt-1">
+                Real-time environmental telemetry across {{ stations|length }} monitoring stations
+            </p>
+            <form method="get" class="mt-3 flex flex-wrap items-center gap-2">
+                <label for="public-algo-select" class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    AQI Formula / Model:
+                </label>
+                <select id="public-algo-select" name="algorithm_id" onchange="this.form.submit()"
+                        class="rounded-lg bg-slate-800 border border-slate-600 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-emerald-400">
+                    <option value="">Recorded Sensor AQI (Ground Truth)</option>
+                    {% for algo in active_algorithms %}
+                        <option value="{{ algo.algorithm_id }}"
+                            {% if selected_algo and algo.algorithm_id == selected_algo.algorithm_id %}selected{% endif %}>
+                            {{ algo.algorithm_name }} ({{ algo.version }})
+                        </option>
+                    {% endfor %}
+                </select>
+                {% if selected_algo %}
+                    <span class="text-xs font-mono text-emerald-300 bg-slate-800/90 px-2.5 py-1 rounded border border-slate-700">
+                        {{ selected_algo.formula_spec }}
+                    </span>
+                {% endif %}
+            </form>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 sm:gap-4 text-center">
+            <div class="bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3">
+                <div class="text-[11px] uppercase tracking-wider text-slate-400">Stations</div>
+                <div class="text-2xl font-extrabold text-white mt-0.5">{{ stations|length }}</div>
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3">
+                <div class="text-[11px] uppercase tracking-wider text-slate-400">City Avg AQI</div>
+                <div id="kpi-avg-aqi" class="text-2xl font-extrabold text-amber-400 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3">
+                <div class="text-[11px] uppercase tracking-wider text-slate-400">Peak Hotspot</div>
+                <div id="kpi-peak-station" class="text-sm font-bold text-rose-400 mt-1.5 truncate max-w-[120px]">--</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+    {% for s in stations %}
+    <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 overflow-hidden flex flex-col justify-between">
+        <div class="h-1.5 w-full" style="background-color: {{ s.health_color|default:'#64748b' }};"></div>
+        <div class="p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="font-bold text-lg text-slate-900">{{ s.location }}</h2>
+                    <p class="text-xs text-slate-400">{{ s.date_ist|date:"M d, Y" }} · {{ s.time_ist|time:"H:i" }} IST</p>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
+                      style="background-color: {{ s.health_color|default:'#64748b' }};">
+                    {{ s.health_status|default:"N/A" }}
+                </span>
+            </div>
+
+            <div class="my-4 flex items-baseline space-x-3">
+                <span class="text-4xl font-black text-slate-900">{{ s.aqi_index }}</span>
+                <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">CPCB / US-EPA AQI</span>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                <div class="bg-slate-50 rounded px-2 py-1.5 text-center">
+                    <span class="block text-[10px] text-slate-400 uppercase">Temp</span>
+                    <strong class="text-slate-800">{{ s.temp_c|default:"--" }}°C</strong>
+                </div>
+                <div class="bg-slate-50 rounded px-2 py-1.5 text-center">
+                    <span class="block text-[10px] text-slate-400 uppercase">Humidity</span>
+                    <strong class="text-slate-800">{{ s.humidity|default:"--" }}%</strong>
+                </div>
+                <div class="bg-slate-50 rounded px-2 py-1.5 text-center truncate">
+                    <span class="block text-[10px] text-slate-400 uppercase">Sky</span>
+                    <strong class="text-slate-800">{{ s.condition_text|default:"Clear" }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-slate-500 text-sm">No AQI station records available yet.</p>
+    {% endfor %}
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
+    <!-- Instant Interactive Delhi Geo-Grid Map -->
+    <div class="lg:col-span-3 bg-slate-900 text-white rounded-xl shadow-sm border border-slate-800 p-5 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <h3 class="font-bold text-white">NCT Delhi Spatial AQI Map</h3>
+                <p class="text-xs text-slate-400">Plotted by GPS coordinates (28.50°N–28.76°N, 77.04°E–77.32°E)</p>
+            </div>
+            <span class="px-2.5 py-1 rounded bg-slate-800 text-emerald-400 text-xs font-mono">6 Stations Active</span>
+        </div>
+        <div id="delhi-geo-map" class="relative h-72 w-full rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <!-- Coordinate Grid Lines -->
+            <svg class="absolute inset-0 w-full h-full opacity-20" xmlns="http://w3.org">
+                <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#38bdf8" stroke-width="0.7"/>
+                    </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+                <!-- Yamuna River stylized path -->
+                <path d="M 380 0 Q 370 110 410 190 T 450 300" fill="none" stroke="#0ea5e9" stroke-width="6" opacity="0.5"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Station-by-Station AQI Comparison Bars -->
+    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
+        <div>
+            <h3 class="font-bold text-slate-800">Station-by-Station AQI Ranking</h3>
+            <p class="text-xs text-slate-500 mb-4">Comparative air quality severity across Delhi</p>
+        </div>
+        <div id="station-bars" class="space-y-3.5 my-auto"></div>
+        <div class="pt-3 border-t border-slate-100 flex justify-between text-[11px] text-slate-400">
+            <span>0 (Good)</span>
+            <span>200 (Moderate)</span>
+            <span>400+ (Severe)</span>
+        </div>
+    </div>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <h3 class="font-bold text-slate-800">Recent Station Logs</h3>
+        <span class="text-xs text-slate-400">Latest 20 telemetry entries</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+                <tr>
+                    <th class="px-4 py-3 text-left">Location</th>
+                    <th class="px-4 py-3 text-left">Date / Time (IST)</th>
+                    <th class="px-4 py-3 text-left">AQI</th>
+                    <th class="px-4 py-3 text-left">Status</th>
+                    <th class="px-4 py-3 text-left">Temp</th>
+                    <th class="px-4 py-3 text-left">Humidity</th>
+                    <th class="px-4 py-3 text-left">Weather</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for r in recent_readings %}
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-3 font-semibold text-slate-900">{{ r.location }}</td>
+                    <td class="px-4 py-3 text-slate-500">{{ r.date_ist|date:"M d, Y" }} · {{ r.time_ist|time:"H:i" }}</td>
+                    <td class="px-4 py-3 font-extrabold text-slate-900">{{ r.aqi_index }}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white"
+                              style="background-color: {{ r.health_color|default:'#64748b' }};">
+                            {{ r.health_status }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">{{ r.temp_c }}°C</td>
+                    <td class="px-4 py-3">{{ r.humidity }}%</td>
+                    <td class="px-4 py-3 text-slate-600">{{ r.condition_text }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const stations = JSON.parse('{{ map_data_json|escapejs }}');
+
+    if (stations.length) {
+        // 1. Hero KPIs
+        const avg = Math.round(stations.reduce((acc, s) => acc + s.aqi, 0) / stations.length);
+        const peak = stations.reduce((max, s) => s.aqi > max.aqi ? s : max, stations[0]);
+        document.getElementById('kpi-avg-aqi').textContent = avg;
+        document.getElementById('kpi-peak-station').textContent = peak.location + ' (' + peak.aqi + ')';
+
+        // 2. Render Station Horizontal Comparison Bars
+        const barsContainer = document.getElementById('station-bars');
+        const sorted = [...stations].sort((a, b) => b.aqi - a.aqi);
+        const maxVal = Math.max(350, ...sorted.map(s => s.aqi));
+
+        sorted.forEach(s => {
+            const pct = Math.min(100, Math.round((s.aqi / maxVal) * 100));
+            const row = document.createElement('div');
+            row.innerHTML =
+                '<div class="flex justify-between text-xs font-semibold mb-1">' +
+                    '<span class="text-slate-700">' + s.location + '</span>' +
+                    '<span class="text-slate-900">' + s.aqi + ' <span class="text-slate-400 font-normal">(' + s.status + ')</span></span>' +
+                '</div>' +
+                '<div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">' +
+                    '<div class="h-2.5 rounded-full transition-all duration-500" style="width:' + pct + '%; background-color:' + s.color + ';"></div>' +
+                '</div>';
+            barsContainer.appendChild(row);
+        });
+
+        // 3. Plot Delhi GPS Pins onto Geo-Grid Map (Delhi bounds: lat 28.50..28.76, lng 77.04..77.32)
+        const mapBox = document.getElementById('delhi-geo-map');
+        const minLat = 28.50, maxLat = 28.76;
+        const minLng = 77.04, maxLng = 77.33;
+
+        stations.forEach(s => {
+            const xPct = Math.min(88, Math.max(8, ((s.lng - minLng) / (maxLng - minLng)) * 100));
+            const yPct = Math.min(82, Math.max(12, (1 - (s.lat - minLat) / (maxLat - minLat)) * 100));
+
+            const pin = document.createElement('div');
+            pin.style.left = xPct + '%';
+            pin.style.top = yPct + '%';
+            pin.className = 'absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer';
+            pin.innerHTML =
+                '<div class="px-2.5 py-1 rounded-full text-xs font-extrabold text-white shadow-lg border-2 border-white transition-transform group-hover:scale-110" style="background-color:' + s.color + ';">' +
+                    s.aqi +
+                '</div>' +
+                '<span class="mt-1 px-1.5 py-0.5 rounded bg-slate-900/90 text-[10px] font-semibold text-slate-200 whitespace-nowrap border border-slate-700">' +
+                    s.location +
+                '</span>';
+            mapBox.appendChild(pin);
+        });
+    }
+</script>
+{% endblock %}
